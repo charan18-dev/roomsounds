@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RoomSound</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+:root {
+  --bg: #080b0f;
+  --surface: #0e1218;
+  --card: #111620;
+  --border: #1c2333;
+  --border-hi: #2a3550;
+  --accent: #3b82f6;
+  --accent-dim: #1d4ed8;
+  --cyan: #22d3ee;
+  --amber: #f59e0b;
+  --green: #10b981;
+  --red: #ef4444;
+  --text: #e2e8f0;
+  --text-dim: #64748b;
+  --text-muted: #334155;
+  --font: 'Syne', sans-serif;
+  --mono: 'DM Mono', monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* subtle dot grid */
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image: radial-gradient(circle, #1c253340 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* top edge glow */
+body::after {
+  content:'';
+  position:fixed;
+  top:0; left:0; right:0;
+  height:1px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--cyan), transparent);
+  z-index:10;
+}
+
+.app {
+  position:relative;
+  z-index:1;
+  max-width:860px;
+  margin:0 auto;
+  padding:28px 20px 40px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+/* ── HEADER ── */
+.header {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  padding-bottom:18px;
+  border-bottom:1px solid var(--border);
+}
+.brand { line-height:1; }
+.brand-name {
+  font-size: clamp(26px,5vw,40px);
+  font-weight:800;
+  letter-spacing:-1px;
+  color:var(--text);
+}
+.brand-name span { color:var(--accent); }
+.brand-sub {
+  font-family: var(--mono);
+  font-size:10px;
+  color:var(--text-dim);
+  letter-spacing:3px;
+  margin-top:5px;
+}
+.status-pills {
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.pill {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 10px;
+  border-radius:99px;
+  border:1px solid var(--border);
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--text-dim);
+  background:var(--card);
+  transition: all 0.3s;
+}
+.pill.active { border-color:var(--accent); color:var(--text); }
+.pill .led {
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--text-muted);
+  transition:all 0.3s;
+}
+.pill.cam-on .led { background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 2s infinite; }
+.pill.ai-on .led { background:var(--accent); box-shadow:0 0 6px var(--accent); animation:blink 2s 0.3s infinite; }
+.pill.sound-on .led { background:var(--cyan); box-shadow:0 0 6px var(--cyan); animation:blink 2s 0.6s infinite; }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0.35} }
+
+/* ── MAIN GRID ── */
+.grid-top {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+@media(max-width:580px){ .grid-top{grid-template-columns:1fr;} }
+
+/* ── PANEL BASE ── */
+.panel {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+.panel-header {
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.panel-title {
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:2px;
+  color:var(--text-dim);
+  text-transform:uppercase;
+}
+.panel-badge {
+  font-family:var(--mono);
+  font-size:9px;
+  padding:2px 8px;
+  border-radius:99px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  color:var(--text-dim);
+}
+
+/* ── CAM ── */
+.cam-body {
+  position:relative;
+  aspect-ratio:4/3;
+  background:var(--surface);
+}
+.cam-body video {
+  width:100%;height:100%;
+  object-fit:cover;
+  display:none;
+  transform:scaleX(-1);
+}
+.cam-placeholder {
+  width:100%;height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+}
+.cam-icon-wrap {
+  width:56px;height:56px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;
+  background:var(--card);
+}
+.cam-placeholder p {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--text-muted);
+  letter-spacing:2px;
+}
+.cam-body canvas { display:none; }
+.cam-bottom {
+  position:absolute;
+  bottom:0; left:0; right:0;
+  height:50px;
+  background:linear-gradient(transparent, rgba(8,11,15,0.9));
+}
+
+/* ── VIZ ── */
+.viz-body {
+  aspect-ratio:4/3;
+  position:relative;
+}
+.viz-body canvas {
+  width:100%;height:100%;
+  display:block;
+}
+
+/* ── SCENE ── */
+.scene-body { padding:16px; }
+.tags-row {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  min-height:36px;
+}
+.tag {
+  padding:4px 10px;
+  border-radius:6px;
+  border:1px solid var(--border-hi);
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--cyan);
+  background:rgba(34,211,238,0.04);
+  animation:pop 0.25s ease;
+}
+@keyframes pop{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}
+.swatches {
+  display:flex;
+  gap:6px;
+  margin-top:12px;
+}
+.swatch {
+  flex:1;height:28px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  transition:background 0.6s ease;
+  background:#111;
+}
+
+/* ── AI PANEL ── */
+.ai-panel {
+  background:var(--card);
+  border:1px solid var(--border-hi);
+  border-radius:14px;
+  overflow:hidden;
+}
+.ai-body { padding:18px; }
+.mood-row {
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  margin-bottom:10px;
+}
+.mood-word {
+  font-size:clamp(22px,4vw,34px);
+  font-weight:800;
+  letter-spacing:-0.5px;
+  color:var(--accent);
+  min-width:60px;
+  transition:color 0.5s;
+}
+.mood-desc {
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text-dim);
+  line-height:1.7;
+  font-style:italic;
+  min-height:52px;
+  padding-top:2px;
+}
+
+/* params */
+.params {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:14px;
+}
+.param {
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--surface);
+}
+.param-name {
+  font-family:var(--mono);
+  font-size:9px;
+  letter-spacing:2px;
+  color:var(--text-muted);
+  margin-bottom:4px;
+}
+.param-val {
+  font-family:var(--mono);
+  font-size:14px;
+  color:var(--text);
+  font-weight:500;
+}
+.param-track {
+  height:2px;
+  background:var(--border);
+  border-radius:1px;
+  margin-top:6px;
+  overflow:hidden;
+}
+.param-fill {
+  height:100%;
+  border-radius:1px;
+  background:linear-gradient(90deg, var(--accent), var(--cyan));
+  transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── WAVEFORM ── */
+.wave-panel {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:14px 16px;
+  height:72px;
+  display:flex;
+  align-items:center;
+  gap:2px;
+}
+.wb {
+  flex:1;
+  border-radius:1px;
+  background:var(--accent);
+  min-height:2px;
+  height:3px;
+  transition:height 0.08s ease;
+  opacity:0.7;
+}
+
+/* ── CONTROLS ── */
+.controls {
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.btn {
+  flex:1;
+  min-width:120px;
+  padding:14px 18px;
+  border-radius:10px;
+  border:none;
+  font-family:var(--font);
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:0.5px;
+  cursor:pointer;
+  transition:all 0.2s;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary {
+  background:var(--accent);
+  color:#fff;
+}
+.btn-primary:hover { background:#2563eb; }
+.btn-secondary {
+  background:var(--surface);
+  color:var(--cyan);
+  border:1px solid var(--border-hi);
+}
+.btn-secondary:hover { border-color:var(--cyan); }
+.btn-ghost {
+  background:var(--surface);
+  color:var(--text-dim);
+  border:1px solid var(--border);
+}
+.btn-ghost:hover { border-color:var(--red); color:var(--red); }
+.btn:disabled { opacity:0.35; cursor:not-allowed; }
+
+/* ── LOG ── */
+.log-panel {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+.log-body {
+  padding:10px 14px;
+  max-height:120px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.log-body::-webkit-scrollbar { width:4px; }
+.log-body::-webkit-scrollbar-track { background:transparent; }
+.log-body::-webkit-scrollbar-thumb { background:var(--border-hi); border-radius:2px; }
+.log-line {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--text-dim);
+  padding:2px 0;
+  animation:pop 0.2s ease;
+  display:flex;
+  gap:8px;
+}
+.log-time { color:var(--text-muted); flex-shrink:0; }
+.log-line.ok .log-msg { color:var(--green); }
+.log-line.warn .log-msg { color:var(--amber); }
+.log-line.info .log-msg { color:var(--text-dim); }
+
+/* ── OBJ COUNT BADGE ── */
+.obj-count-badge {
+  font-family:var(--mono);
+  font-size:9px;
+  padding:2px 8px;
+  border-radius:99px;
+  background:rgba(34,211,238,0.08);
+  border:1px solid rgba(34,211,238,0.2);
+  color:var(--cyan);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-name">Room<span>Sound</span></div>
+      <div class="brand-sub">AI AUDIO VISUALIZER</div>
+    </div>
+    <div class="status-pills">
+      <div class="pill" id="pill-cam"><div class="led"></div><span id="txt-cam">CAM</span></div>
+      <div class="pill" id="pill-ai"><div class="led"></div><span id="txt-ai">AI</span></div>
+      <div class="pill" id="pill-sound"><div class="led"></div><span id="txt-sound">SND</span></div>
+    </div>
+  </div>
+
+  <!-- TOP GRID -->
+  <div class="grid-top">
+
+    <!-- CAMERA -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Live Feed</div>
+        <div class="panel-badge" id="obj-count-badge">0 objects</div>
+      </div>
+      <div class="cam-body" id="cam-body">
+        <div class="cam-placeholder" id="cam-placeholder">
+          <div class="cam-icon-wrap">📷</div>
+          <p>AWAITING CAMERA</p>
+        </div>
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="color-canvas"></canvas>
+        <div class="cam-bottom"></div>
+      </div>
+    </div>
+
+    <!-- VISUALIZER -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Visualizer</div>
+        <div class="panel-badge" id="viz-mode-badge">IDLE</div>
+      </div>
+      <div class="viz-body">
+        <canvas id="viz-canvas"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SCENE -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Scene Analysis</div>
+    </div>
+    <div class="scene-body">
+      <div class="tags-row" id="tags-row">
+        <div class="tag" style="color:var(--text-muted);border-color:var(--border);background:none;">no objects detected yet</div>
+      </div>
+      <div class="swatches">
+        <div class="swatch" id="sw1"></div>
+        <div class="swatch" id="sw2"></div>
+        <div class="swatch" id="sw3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI -->
+  <div class="ai-panel">
+    <div class="panel-header">
+      <div class="panel-title">Groq AI — Soundscape</div>
+      <div class="panel-badge" id="ai-status-badge">STANDBY</div>
+    </div>
+    <div class="ai-body">
+      <div class="mood-row">
+        <div class="mood-word" id="mood">—</div>
+      </div>
+      <div class="mood-desc" id="ai-desc">Start the app and point your camera at the room. Groq AI will analyze the scene and compose a live soundscape.</div>
+      <div class="params">
+        <div class="param">
+          <div class="param-name">TEMPO</div>
+          <div class="param-val" id="p-tempo">— BPM</div>
+          <div class="param-track"><div class="param-fill" id="b-tempo" style="width:0%"></div></div>
+        </div>
+        <div class="param">
+          <div class="param-name">PITCH</div>
+          <div class="param-val" id="p-pitch">— Hz</div>
+          <div class="param-track"><div class="param-fill" id="b-pitch" style="width:0%"></div></div>
+        </div>
+        <div class="param">
+          <div class="param-name">INTENSITY</div>
+          <div class="param-val" id="p-intensity">—%</div>
+          <div class="param-track"><div class="param-fill" id="b-intensity" style="width:0%"></div></div>
+        </div>
+        <div class="param">
+          <div class="param-name">REVERB</div>
+          <div class="param-val" id="p-reverb">—%</div>
+          <div class="param-track"><div class="param-fill" id="b-reverb" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WAVEFORM -->
+  <div class="wave-panel" id="wave-panel"></div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <button class="btn btn-primary" id="btn-start" onclick="startApp()">▶ Start</button>
+    <button class="btn btn-secondary" id="btn-analyze" onclick="analyzeNow()" disabled>⬡ Analyze Now</button>
+    <button class="btn btn-ghost" onclick="stopApp()">■ Stop</button>
+  </div>
+
+  <!-- LOG -->
+  <div class="log-panel">
+    <div class="panel-header">
+      <div class="panel-title">System Log</div>
+    </div>
+    <div class="log-body" id="log"></div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//   🔑  PASTE YOUR GROQ API KEY BELOW (line 14)
+//   Get one free at: https://console.groq.com
+// ══════════════════════════════════════════════════
+const GROQ_KEY = 'PASTE_YOUR_GROQ_KEY_HERE';
+// ══════════════════════════════════════════════════
+
+let stream = null, synth = null, analyzeInterval = null;
+let vizFrame = null, isRunning = false, ambientLoop = null;
+let currentParams = { tempo:80, pitch:440, intensity:0.5, reverb:0.3 };
+let wavePhase = 0, particles = [];
+
+const video    = document.getElementById('video');
+const colorCvs = document.getElementById('color-canvas');
+const vizCvs   = document.getElementById('viz-canvas');
+const vizCtx   = vizCvs.getContext('2d');
+
+// wave bars
+const wavePanel = document.getElementById('wave-panel');
+for(let i=0;i<48;i++){
+  const b=document.createElement('div');
+  b.className='wb'; b.id='wb'+i;
+  wavePanel.appendChild(b);
+}
+
+function log(msg, type='info'){
+  const el=document.getElementById('log');
+  const d=document.createElement('div');
+  d.className='log-line '+type;
+  const t=new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  d.innerHTML=`<span class="log-time">${t}</span><span class="log-msg">${msg}</span>`;
+  el.prepend(d);
+  if(el.children.length>30)el.lastChild.remove();
+}
+
+function setPill(id, cls, label){
+  const p=document.getElementById(id);
+  p.className='pill '+cls;
+  const s=p.querySelector('span');
+  if(s) s.textContent=label||s.textContent;
+}
+
+async function startApp(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+    video.srcObject=stream;
+    video.style.display='block';
+    document.getElementById('cam-placeholder').style.display='none';
+    setPill('pill-cam','pill cam-on','CAM');
+    log('Camera ready','ok');
+    isRunning=true;
+    document.getElementById('btn-analyze').disabled=false;
+    document.getElementById('viz-mode-badge').textContent='LIVE';
+
+    await Tone.start();
+    setupSynth();
+    setPill('pill-sound','pill sound-on','SND');
+    log('Audio engine started','ok');
+
+    startViz();
+    animateWave();
+    analyzeInterval=setInterval(analyzeNow, 9000);
+    setTimeout(analyzeNow, 1800);
+  } catch(e){
+    log('Camera error: '+e.message,'warn');
+    alert('Camera permission required. Please allow access and try again.');
+  }
+}
+
+function stopApp(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  if(synth){synth.dispose();synth=null;}
+  if(ambientLoop){ambientLoop.dispose();ambientLoop=null;}
+  Tone.Transport.stop();
+  if(analyzeInterval){clearInterval(analyzeInterval);analyzeInterval=null;}
+  if(vizFrame){cancelAnimationFrame(vizFrame);vizFrame=null;}
+  video.style.display='none';
+  document.getElementById('cam-placeholder').style.display='flex';
+  setPill('pill-cam','pill','CAM');
+  setPill('pill-ai','pill','AI');
+  setPill('pill-sound','pill','SND');
+  document.getElementById('btn-analyze').disabled=true;
+  document.getElementById('viz-mode-badge').textContent='IDLE';
+  isRunning=false;
+  log('Session stopped');
+}
+
+function setupSynth(){
+  const rev=new Tone.Reverb({decay:3.5,wet:0.38}).toDestination();
+  const dly=new Tone.FeedbackDelay('8n',0.25).connect(rev);
+  synth=new Tone.PolySynth(Tone.Synth,{
+    oscillator:{type:'sine'},
+    envelope:{attack:0.6,decay:0.4,sustain:0.55,release:2.5}
+  }).connect(dly);
+  synth.volume.value=-12;
+  playAmbient();
+}
+
+function playAmbient(){
+  if(ambientLoop){ambientLoop.dispose();}
+  const scales={
+    calm:['C4','E4','G4','B4','D5'],
+    energetic:['C4','D4','E4','G4','A4','C5'],
+    mysterious:['C4','Eb4','F4','Ab4','Bb4'],
+    peaceful:['C4','E4','G4','A4','C5'],
+    intense:['C4','D4','F4','G4','Bb4','C5'],
+    dark:['C3','Eb3','G3','Bb3','C4']
+  };
+  const mood=(document.getElementById('mood').textContent||'').toLowerCase();
+  let scale=scales.calm;
+  for(const k of Object.keys(scales)){if(mood.includes(k)){scale=scales[k];break;}}
+  Tone.Transport.bpm.value=currentParams.tempo||80;
+  ambientLoop=new Tone.Sequence((time,note)=>{
+    if(synth) synth.triggerAttackRelease(note,'4n',time,currentParams.intensity*0.55);
+  },scale,'4n');
+  ambientLoop.start(0);
+  Tone.Transport.start();
+}
+
+function getDominantColors(){
+  if(!video.videoWidth) return ['#111','#1a1a1a','#222'];
+  colorCvs.width=80; colorCvs.height=60;
+  const ctx=colorCvs.getContext('2d');
+  ctx.drawImage(video,0,0,80,60);
+  const d=ctx.getImageData(0,0,80,60).data;
+  const bk={};
+  for(let i=0;i<d.length;i+=16){
+    const r=Math.round(d[i]/50)*50;
+    const g=Math.round(d[i+1]/50)*50;
+    const b=Math.round(d[i+2]/50)*50;
+    const k=`${r},${g},${b}`;
+    bk[k]=(bk[k]||0)+1;
+  }
+  const sorted=Object.entries(bk).sort((a,b)=>b[1]-a[1]);
+  const colors=sorted.slice(0,3).map(([k])=>{const[r,g,b]=k.split(',');return`rgb(${r},${g},${b})`;});
+  while(colors.length<3)colors.push('#111');
+  return colors;
+}
+
+function detectObjects(colors){
+  const objs=[];
+  colorCvs.width=80;colorCvs.height=60;
+  const ctx=colorCvs.getContext('2d');
+  ctx.drawImage(video,0,0,80,60);
+  const d=ctx.getImageData(0,0,80,60).data;
+  let brightness=0;
+  for(let i=0;i<d.length;i+=4) brightness+=(d[i]+d[i+1]+d[i+2])/3;
+  brightness/=(d.length/4);
+  if(brightness>190)objs.push('bright room');
+  else if(brightness>110)objs.push('moderate light');
+  else objs.push('dim room');
+  objs.push('room','person','device');
+  return [...new Set(objs)].slice(0,5);
+}
+
+async function analyzeNow(){
+  if(!isRunning)return;
+  setPill('pill-ai','pill ai-on','AI');
+  document.getElementById('ai-status-badge').textContent='ANALYZING';
+  log('Analyzing scene…');
+
+  const colors=getDominantColors();
+  document.getElementById('sw1').style.background=colors[0];
+  document.getElementById('sw2').style.background=colors[1];
+  document.getElementById('sw3').style.background=colors[2];
+
+  const objs=detectObjects(colors);
+  document.getElementById('obj-count-badge').textContent=objs.length+' objects';
+  document.getElementById('tags-row').innerHTML=objs.map(o=>`<div class="tag">${o}</div>`).join('');
+
+  const prompt=`You are an AI music composer for a room audio visualizer.
+
+Room scene:
+- Dominant colors: ${colors.join(', ')}
+- Detected elements: ${objs.join(', ')}
+
+Respond ONLY in this exact JSON format, no extra text:
+{
+  "mood": "ONE_WORD_CAPS",
+  "description": "One sentence describing the soundscape.",
+  "tempo": <40-160>,
+  "pitch": <200-800>,
+  "intensity": <0.1-1.0>,
+  "reverb": <0.1-1.0>,
+  "instrument": "sine|triangle|sawtooth|square"
+}`;
+
+  try{
+    const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_KEY},
+      body:JSON.stringify({
+        model:'llama3-8b-8192',
+        max_tokens:300,
+        messages:[
+          {role:'system',content:'You are an AI music composer. Always respond in valid JSON only. No preamble, no markdown.'},
+          {role:'user',content:prompt}
+        ]
+      })
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const txt=data.choices?.[0]?.message?.content||'';
+    try{
+      const clean=txt.replace(/```json|```/g,'').trim();
+      const p=JSON.parse(clean);
+      applyParams(p);
+      document.getElementById('ai-status-badge').textContent='ACTIVE';
+      log('Soundscape: '+p.mood,'ok');
+    }catch{
+      applyFallback(colors);
+      log('JSON parse failed — using fallback','warn');
+    }
+  }catch(e){
+    applyFallback(colors);
+    document.getElementById('ai-status-badge').textContent='OFFLINE';
+    setPill('pill-ai','pill','AI');
+    if(GROQ_KEY==='PASTE_YOUR_GROQ_KEY_HERE'){
+      log('⚠ No Groq key — paste it at line 14 of the HTML','warn');
+    }else{
+      log('Groq error: '+e.message,'warn');
+    }
+  }
+}
+
+function applyParams(p){
+  document.getElementById('mood').textContent=p.mood||'AMBIENT';
+  document.getElementById('ai-desc').textContent=p.description||'';
+  const t=p.tempo||80, pi=p.pitch||440, ii=p.intensity||0.5, re=p.reverb||0.3;
+  document.getElementById('p-tempo').textContent=t+' BPM';
+  document.getElementById('p-pitch').textContent=pi+' Hz';
+  document.getElementById('p-intensity').textContent=Math.round(ii*100)+'%';
+  document.getElementById('p-reverb').textContent=Math.round(re*100)+'%';
+  document.getElementById('b-tempo').style.width=((t-40)/120*100)+'%';
+  document.getElementById('b-pitch').style.width=((pi-200)/600*100)+'%';
+  document.getElementById('b-intensity').style.width=(ii*100)+'%';
+  document.getElementById('b-reverb').style.width=(re*100)+'%';
+  currentParams={tempo:t,pitch:pi,intensity:ii,reverb:re};
+  if(synth){
+    Tone.Transport.bpm.value=t;
+    synth.set({oscillator:{type:p.instrument||'sine'}});
+  }
+  playAmbient();
+}
+
+function applyFallback(colors){
+  const moods=['CALM','AMBIENT','PEACEFUL','QUIET','SERENE'];
+  applyParams({
+    mood:moods[Math.floor(Math.random()*moods.length)],
+    description:'Color-based composition — '+colors[0]+' dominant environment.',
+    tempo:55+Math.random()*70,
+    pitch:300+Math.random()*350,
+    intensity:0.25+Math.random()*0.45,
+    reverb:0.3+Math.random()*0.5,
+    instrument:'sine'
+  });
+}
+
+// ── VIZ ──
+function startViz(){
+  const resize=()=>{
+    vizCvs.width=vizCvs.offsetWidth*window.devicePixelRatio||400;
+    vizCvs.height=vizCvs.offsetHeight*window.devicePixelRatio||300;
+  };
+  resize();
+  window.addEventListener('resize',resize);
+  particles=Array.from({length:55},()=>({
+    x:Math.random()*vizCvs.width,
+    y:Math.random()*vizCvs.height,
+    r:Math.random()*3+1,
+    vx:(Math.random()-0.5)*1.2,
+    vy:(Math.random()-0.5)*1.2,
+    hue:Math.random()*60+200, // blues to cyans
+    alpha:Math.random()*0.7+0.2
+  }));
+  drawViz();
+}
+
+function drawViz(){
+  vizFrame=requestAnimationFrame(drawViz);
+  const w=vizCvs.width,h=vizCvs.height;
+  const inten=currentParams.intensity||0.4;
+  const tempo=currentParams.tempo||80;
+
+  vizCtx.fillStyle='rgba(8,11,15,0.18)';
+  vizCtx.fillRect(0,0,w,h);
+
+  particles.forEach(p=>{
+    p.x+=p.vx*(0.8+inten*1.2);
+    p.y+=p.vy*(0.8+inten*1.2);
+    p.hue+=0.4;
+    if(p.x<0)p.x=w; if(p.x>w)p.x=0;
+    if(p.y<0)p.y=h; if(p.y>h)p.y=0;
+    vizCtx.beginPath();
+    vizCtx.arc(p.x,p.y,p.r*(1+inten*0.4),0,Math.PI*2);
+    vizCtx.fillStyle=`hsla(${p.hue},75%,65%,${p.alpha})`;
+    vizCtx.fill();
+  });
+
+  // lines between close particles
+  for(let i=0;i<particles.length;i++){
+    for(let j=i+1;j<particles.length;j++){
+      const dx=particles[i].x-particles[j].x;
+      const dy=particles[i].y-particles[j].y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<60){
+        vizCtx.beginPath();
+        vizCtx.moveTo(particles[i].x,particles[i].y);
+        vizCtx.lineTo(particles[j].x,particles[j].y);
+        vizCtx.strokeStyle=`rgba(59,130,246,${(1-dist/60)*0.25*inten})`;
+        vizCtx.lineWidth=0.5;
+        vizCtx.stroke();
+      }
+    }
+  }
+
+  // center pulse
+  const t=Date.now()/1000;
+  const pulse=Math.sin(t*tempo/60*Math.PI)*0.25+0.75;
+  const cx=w/2,cy=h/2,cr=Math.min(w,h)*0.14*pulse;
+  const g=vizCtx.createRadialGradient(cx,cy,0,cx,cy,cr*2.5);
+  g.addColorStop(0,'rgba(59,130,246,0.5)');
+  g.addColorStop(0.4,'rgba(34,211,238,0.2)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  vizCtx.beginPath();
+  vizCtx.arc(cx,cy,cr*2.5,0,Math.PI*2);
+  vizCtx.fillStyle=g;
+  vizCtx.fill();
+
+  // rings
+  [1,1.8,2.6].forEach((m,i)=>{
+    vizCtx.beginPath();
+    vizCtx.arc(cx,cy,cr*m,0,Math.PI*2);
+    vizCtx.strokeStyle=`rgba(59,130,246,${0.25/(i+1)})`;
+    vizCtx.lineWidth=1;
+    vizCtx.stroke();
+  });
+}
+
+// ── WAVE ──
+function animateWave(){
+  if(!isRunning)return;
+  requestAnimationFrame(animateWave);
+  wavePhase+=0.08;
+  const inten=currentParams.intensity||0.3;
+  for(let i=0;i<48;i++){
+    const h=Math.abs(Math.sin(wavePhase+i*0.28))*44*inten+3;
+    const b=document.getElementById('wb'+i);
+    if(b){
+      b.style.height=h+'px';
+      // color varies
+      const hue=210+i*1.2;
+      b.style.background=`hsl(${hue},80%,60%)`;
+      b.style.opacity=0.5+inten*0.5;
+    }
+  }
+}
+
+log('RoomSound ready — paste Groq key at line 14, then press Start','ok');
+</script>
+</body>
+</html>
